@@ -18,6 +18,6 @@ if not defined PY (
     exit /b 1
 )
 
-%PY% "server\launcher.py" stop
+%PY% "server\launcher.py" stop 
 echo.
 pause
