@@ -200,3 +200,4 @@ python build/打包.py
 ## 许可
 
 未声明许可证。若使用 frp 做内网穿透，其客户端属 [fatedier/frp](https://github.com/fatedier/frp)，Apache-2.0（自备，不随本仓库分发）。
+本产品完全免费，并且没有违反任何相关规则，如果你觉得损害了你的个人利益，请不要破坏公益资源。
