@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# 运行时产物
+server/.run/
+dist/
+*.zip
+
+# 第三方二进制（从 releases 下载）
+frp/frpc.exe
+frp/LICENSE
+
+# 客户端状态
+.dcsync.json
+.dcsync.log

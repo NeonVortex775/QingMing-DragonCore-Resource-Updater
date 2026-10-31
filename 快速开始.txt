@@ -1,0 +1,31 @@
+青冥 · 仙域  资源自动更新  快速开始（5 步）
+================================================================
+
+0) 先装 Python 3.7+（安装时勾 Add Python to PATH），装完重开窗口。
+
+1) 记事本打开 config.ini，改这三处：
+     [frp]    user        = 你自己的 frp 用户标识
+     [paths]  source_pack = 客户端 resourcepacks/DragonCore 的路径
+     [paths]  webroot     = 服务端 webroot 的路径
+   （端口/域名不对也在这里改，其余不用动）
+
+2) 双击「一键启动.bat」。
+   看到 "4/4 passed  ALL GREEN" 就成了。
+   这个窗口别关，最小化放着。
+
+3) 把 client 里两样东西发给玩家：
+     QingMingUpdater-1.0.jar  ->  .minecraft/mods/
+     qingming-updater.txt     ->  .minecraft/config/
+
+4) 玩家正常启动游戏即可，控制台出现 [QingMing] 就是生效了。
+   （版本一致时不打任何东西，这是正常的）
+
+5) 以后改了贴图：再双击一次「一键启动.bat」就行。
+
+----------------------------------------------------------------
+改了端口也不用重发 jar：
+   config.ini 里的 remote_port 一改，玩家地址和客户端地址都会跟着变，
+   跑一次启动器会把新的 client/qingming-updater.txt 生成好。
+----------------------------------------------------------------
+停止服务：Ctrl+C  或双击「停止.bat」
+详细说明：教程.md
