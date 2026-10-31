@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 重新编译 CoreMod（需要Forge 1.12.2的universal jar）
+# 重新编译 CoreMod（需要 Forge 1.12.2 的 universal jar）
 #   FORGE_JAR=/path/to/forge-1.12.2-14.23.5.2859.jar bash build/build.sh
 set -e
 cd "$(dirname "$0")/.."

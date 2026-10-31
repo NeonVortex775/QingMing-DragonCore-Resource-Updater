@@ -9,8 +9,12 @@
     python launcher.py verify    只做全链路自检（4 项）
     python launcher.py check     只读 config.ini 并检查配置是否合法
 
-一个进程里跑两件事（HTTP 静态服务 + 首包分流器），frpc 作为子进程。
-关掉这个窗口 = 全部停止，不会出现「frpc 还在但后面没服务」的半死状态。
+一个进程里跑两件事（HTTP 静态服务 + 首包分流器），中转客户端作为子进程。
+关掉这个窗口 = 全部停止，不会出现「隧道还在但后面没服务」的半死状态。
+
+两种对外方式（config.ini 的 network.mode）：
+    direct  有公网 IP：只跑 HTTP，MC 服务自己对外，不需要分流器与中转
+    relay   没有公网 IP：HTTP 和 MC 共用同一个公网端口，靠首包分流区分
 """
 from __future__ import print_function
 
@@ -79,7 +83,8 @@ def kill_pid(pid):
     name = proc_name(pid)
     if not name:
         return False
-    if name not in ("python.exe", "pythonw.exe", "py.exe", "frpc.exe"):
+    if name not in ("python.exe", "pythonw.exe", "py.exe", "frpc.exe",
+                    "relay-client.exe"):
         return False                      # 不是我们的进程，坚决不动
     try:
         subprocess.call(["taskkill", "/F", "/PID", str(pid)],
@@ -151,36 +156,45 @@ def start_mux(cfg):
     return dc_mux
 
 
-def frpc_path():
-    for rel in ("frp/frpc.exe", "../frp/frpc.exe", "frpc.exe"):
+def relay_client_path():
+    """中转客户端（如果你用 frp 做内网穿透，把 frpc.exe 放进 relay/ 目录即可）"""
+    for rel in ("relay/relay-client.exe", "relay/frpc.exe",
+                "../relay/frpc.exe", "relay-client.exe", "frpc.exe"):
         p = os.path.normpath(os.path.join(HERE, rel))
         if os.path.isfile(p):
             return p
     return None
 
 
-def start_frpc(cfg):
-    exe = frpc_path()
+def start_relay(cfg):
+    exe = relay_client_path()
     if not exe:
-        log("！没找到 frpc.exe（frp 目录），只能本机使用，外网连不进来")
+        log("！relay/ 目录下没有中转客户端，外网连不进来")
+        log("  如果你用 frp 做内网穿透：去 frp 项目 releases 下载 windows_amd64 的 frpc.exe，")
+        log("  放到 relay/ 目录后重新启动。用云服务器直连的话请在 config.ini 把 mode 改成 direct")
         return None
-    ini = cfg.write_frpc_ini()
+    ini = cfg.write_relay_ini()
     logdir = os.path.join(cfg.run_dir, "logs")
     if not os.path.isdir(logdir):
         os.makedirs(logdir)
-    logf = open(os.path.join(logdir, "frpc.log"), "ab")
+    logf = open(os.path.join(logdir, "relay.log"), "ab")
     env = dict(os.environ)
     for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy",
               "ALL_PROXY", "all_proxy"):
-        env.pop(k, None)                  # 本机代理会让 frpc 连不上 frps
+        env.pop(k, None)                  # 本机代理会让中转客户端连不上服务端
     kw = {}
     if os.name == "nt":
         kw["creationflags"] = 0x08000000   # CREATE_NO_WINDOW
     p = subprocess.Popen([exe, "-c", ini], cwd=os.path.dirname(exe),
                          stdout=logf, stderr=subprocess.STDOUT, env=env, **kw)
-    log("frpc 已启动     %s:%d  ->  本地:%d   公网端口:%d"
-        % (cfg.server_addr, cfg.server_port, cfg.mux_port, cfg.remote_port))
+    log("中转客户端已启动  %s:%d  ->  本地:%d   公网端口:%d"
+        % (cfg.relay_server, cfg.relay_port, cfg.mux_port, cfg.public_port))
     return p
+
+
+# 兼容老引用
+frpc_path = relay_client_path
+start_frpc = start_relay
 
 
 # ── 客户端配置 ──────────────────────────────────────────
@@ -190,7 +204,7 @@ def write_client_cfg(cfg):
     if not os.path.isdir(d):
         return None
     p = os.path.join(d, "qingming-updater.txt")
-    body = ("# 青冥·仙域 资源更新地址\n"
+    body = ("# 青冥 资源更新地址\n"
             "# 复制本文件到玩家客户端 .minecraft/config/qingming-updater.txt\n"
             "# 换服务器只改下面这一行\n"
             "%s\n" % cfg.base_url)
@@ -205,13 +219,19 @@ def write_client_cfg(cfg):
 # ── 子命令 ──────────────────────────────────────────────
 def cmd_check(cfg):
     print("配置文件   : %s" % (cfg.path or "（未找到，用内置默认值）"))
-    print("frp 服务端 : %s:%d  user=%s" % (cfg.server_addr, cfg.server_port, cfg.user or "-"))
+    if cfg.is_direct:
+        print("对外方式   : 公网直连（VPS / 云服务器）")
+    else:
+        print("对外方式   : 内网穿透（单端口复用 MC 与资源）")
+        print("中转服务   : %s:%d  通道=%s"
+              % (cfg.relay_server or "?", cfg.relay_port, cfg.relay_token or "-"))
     print("玩家地址   : %s" % cfg.public_addr)
     print("资源地址   : %s" % cfg.base_url)
     print("本机端口   : mc=%d  mux=%d  http=%d" % (cfg.mc_port, cfg.mux_port, cfg.http_port))
     print("资源来源   : %s" % cfg.source_pack)
     print("发布目录   : %s" % cfg.web_dir.replace("\\", "/"))
-    print("frpc       : %s" % (frpc_path() or "未找到"))
+    if not cfg.is_direct:
+        print("中转客户端 : %s" % (relay_client_path() or "未找到（relay/ 目录）"))
     bad = cfg.problems()
     warn = cfg.warnings()
     print("")
@@ -240,7 +260,8 @@ def cmd_verify(cfg):
     dc_verify.LOCAL_HTTP = ("127.0.0.1", cfg.http_port)
     dc_verify.LOCAL_MC = ("127.0.0.1", cfg.mc_port)
     dc_verify.LOCAL_MUX = ("127.0.0.1", cfg.mux_port)
-    dc_verify.PUBLIC = (cfg.server_addr, cfg.remote_port)
+    dc_verify.PUBLIC = (cfg.host, cfg.public_http_port)
+    dc_verify.CHECK_MC_PUBLIC = not cfg.is_direct
     sys.argv = [sys.argv[0]]
     return dc_verify.main()
 
@@ -275,7 +296,10 @@ def cmd_start(cfg):
 
     # 3) 端口
     print("[3/5] 检查端口")
-    for name, port in (("http", cfg.http_port), ("mux", cfg.mux_port)):
+    ports = [("http", cfg.http_port)]
+    if not cfg.is_direct:
+        ports.append(("mux", cfg.mux_port))
+    for name, port in ports:
         if port_busy(port):
             print("   [X] 端口 %d（%s）被别的程序占用" % (port, name))
             print("       要么关掉那个程序，要么改 config.ini 里的 %s_port" % name)
@@ -286,12 +310,13 @@ def cmd_start(cfg):
     print("[4/5] 启动服务")
     try:
         start_http(cfg)
-        dc_mux = start_mux(cfg)
+        if not cfg.is_direct:
+            start_mux(cfg)
     except Exception as e:
         print("   [X] 启动失败：%r" % (e,))
         return 1
-    frpc = start_frpc(cfg)
-    save_pids(cfg, frpc.pid if frpc else 0)
+    relay = None if cfg.is_direct else start_relay(cfg)
+    save_pids(cfg, relay.pid if relay else 0)
     p = write_client_cfg(cfg)
     if p:
         log("玩家端配置已更新  client/qingming-updater.txt")
@@ -312,28 +337,28 @@ def cmd_start(cfg):
         print("")
     sys.stdout.flush()
 
-    # 常驻：看着 frpc，掉了就拉起来
+    # 常驻：relay 模式下看着中转客户端，掉了就拉起来
     restarts = 0
     try:
         while True:
             time.sleep(5)
-            if frpc is not None and frpc.poll() is not None:
+            if relay is not None and relay.poll() is not None:
                 restarts += 1
                 if restarts > 5:
-                    log("frpc 反复退出（已重启 %d 次），停止重试，看 server/.run/logs/frpc.log"
+                    log("中转客户端反复退出（已重启 %d 次），停止重试，看 server/.run/logs/relay.log"
                         % restarts)
-                    frpc = None
+                    relay = None
                     continue
-                log("frpc 退出了，第 %d 次重启…" % restarts)
-                frpc = start_frpc(cfg)
-                if frpc:
-                    save_pids(cfg, frpc.pid)
+                log("中转客户端退出了，第 %d 次重启…" % restarts)
+                relay = start_relay(cfg)
+                if relay:
+                    save_pids(cfg, relay.pid)
     except KeyboardInterrupt:
         print("")
         log("收到 Ctrl+C，正在停止…")
-        if frpc is not None and frpc.poll() is None:
+        if relay is not None and relay.poll() is None:
             try:
-                frpc.terminate()
+                relay.terminate()
             except Exception:
                 pass
         stop_all(cfg, quiet=True)

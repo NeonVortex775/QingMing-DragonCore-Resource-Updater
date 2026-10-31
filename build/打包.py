@@ -89,33 +89,37 @@ def build():
         ini = f.read()
     addr = read_ini_value(ini, "client", "base_url")
     if not addr:
-        host = read_ini_value(ini, "frp", "server_addr") or "你的域名"
-        port = read_ini_value(ini, "frp", "remote_port") or "端口"
+        host = read_ini_value(ini, "network", "public_host") or "你的域名"
+        port = read_ini_value(ini, "network", "public_port") or "端口"
         addr = "http://%s:%s/dc/" % (host, port)
     if not addr.endswith("/"):
         addr += "/"
     with io.open(os.path.join(cdir, "qingming-updater.txt"), "w",
                  encoding="utf-8", newline="\r\n") as f:
-        f.write("# 青冥·仙域 资源更新地址\n"
+        f.write("# 青冥 资源更新地址\n"
                 "# 复制本文件到玩家客户端 .minecraft/config/qingming-updater.txt\n"
                 "# 换服务器只改下面这一行\n%s\n" % addr)
 
-    exe = os.path.join(ROOT, "frp", "frpc.exe")
+    exe = os.path.join(ROOT, "relay", "frpc.exe")
     if os.path.isfile(exe):
-        copy(exe, os.path.join(OUT, "frp", "frpc.exe"))
-        lic = os.path.join(ROOT, "frp", "LICENSE")
+        copy(exe, os.path.join(OUT, "relay", "frpc.exe"))
+        lic = os.path.join(ROOT, "relay", "LICENSE")
         if os.path.isfile(lic):
-            copy(lic, os.path.join(OUT, "frp", "LICENSE"))
+            copy(lic, os.path.join(OUT, "relay", "LICENSE"))
     else:
-        print("   注意：frp/frpc.exe 不存在，zip 里不会有它")
-        print("        下载 https://github.com/fatedier/frp/releases 的 windows_amd64 版本解压进来")
-    if not os.path.isdir(os.path.join(OUT, "frp")):
-        os.makedirs(os.path.join(OUT, "frp"))
-    with io.open(os.path.join(OUT, "frp", "说明.txt"), "w",
-                 encoding="utf-8", newline="\r\n") as f:
-        f.write("frpc.exe 是 frp 官方客户端（Apache-2.0）。\n"
-                "不需要手动配置：启动器会按 ../config.ini 生成 server/.run/frpc.ini 再调用。\n"
-                "不要再用 frp 的 GUI 客户端，它会把本地端口写回另一个值。\n")
+        print("   注意：relay/frpc.exe 不存在，zip 里不会有中转客户端")
+        print("        用 frp 的话，下载 https://github.com/fatedier/frp/releases 的 windows_amd64 版本放进去")
+    if not os.path.isdir(os.path.join(OUT, "relay")):
+        os.makedirs(os.path.join(OUT, "relay"))
+    readme = os.path.join(ROOT, "relay", "README.md")
+    if os.path.isfile(readme):
+        copy(readme, os.path.join(OUT, "relay", "说明.txt"))
+    else:
+        with io.open(os.path.join(OUT, "relay", "说明.txt"), "w",
+                     encoding="utf-8", newline="\r\n") as f:
+            f.write("mode = relay 时把中转客户端（如 frpc.exe）放进本目录；\n"
+                    "启动器会按 ../config.ini 自动生成配置并调用。\n"
+                    "mode = direct（VPS 直连）时本目录用不上。\n")
 
     if os.path.isfile(ZIP):
         os.remove(ZIP)

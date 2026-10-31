@@ -7,9 +7,9 @@ server/.run/
 dist/
 *.zip
 
-# 第三方二进制（从 releases 下载）
-frp/frpc.exe
-frp/LICENSE
+# 中转客户端（自备，不进仓库）
+relay/*.exe
+relay/LICENSE
 
 # 客户端状态
 .dcsync.json

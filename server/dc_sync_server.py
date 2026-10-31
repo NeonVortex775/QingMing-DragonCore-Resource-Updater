@@ -9,7 +9,7 @@
     python dc_sync_server.py            # 等价于 sync
     python dc_sync_server.py plan       # 只列表，不复制（看清要推多少再动手）
     python dc_sync_server.py sync       # 镜像 + 清理多余文件 + 重建 manifest
-    python dc_sync_server.py serve      # 起 HTTP 静态服务（frp 指向这里）
+    python dc_sync_server.py serve      # 起 HTTP 静态服务（分流器/反代指向这里）
     python dc_sync_server.py sync serve # 先同步再服务（最常用）
     python dc_sync_server.py sync --all # 取消单文件体积上限（默认 64MB）
     python dc_sync_server.py sync --max-mb 200
@@ -301,7 +301,7 @@ def sync(max_mb):
     if pruned and not purge:
         print("清理的文件已移到 %s（确认不要了用 --purge 重跑才会真删）" % bak_root)
     print("耗时 %.1fs" % (time.time() - t0))
-    print("对外： http://<你的frp域名>:<端口>/%s/manifest.json" % SUB)
+    print("对外： http://<你的公网地址>:<端口>/%s/manifest.json" % SUB)
     return ver
 
 

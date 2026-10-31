@@ -1,16 +1,27 @@
-青冥 · 仙域  资源自动更新  快速开始（5 步）
+青冥 资源自动更新 快速开始（5 步）
 ================================================================
 
 0) 先装 Python 3.7+（安装时勾 Add Python to PATH），装完重开窗口。
 
-1) 记事本打开 config.ini，改这三处：
-     [frp]    user        = 你自己的 frp 用户标识
-     [paths]  source_pack = 客户端 resourcepacks/DragonCore 的路径
-     [paths]  webroot     = 服务端 webroot 的路径
-   （端口/域名不对也在这里改，其余不用动）
+1) 记事本打开 config.ini，按你的对外方式改：
+
+   方式一：VPS / 云服务器（有公网 IP，最简单）
+       [network] mode        = direct
+       [network] public_host = 服务器公网 IP 或域名
+       云服务器安全组放行 mc_port 和 http_port 两个端口
+
+   方式二：家里电脑（用 frp 等内网穿透）
+       [network] mode        = relay
+       [network] public_port = 穿透映射出来的公网端口
+       [relay]   server / port / token = 穿透服务的地址、端口、通道标识
+       用 frp 的话：把 frpc.exe 放进 relay/ 目录（详见 relay/说明.txt）
+
+   两种方式都要填：
+       [paths] source_pack = 客户端 resourcepacks/DragonCore 的路径
+       [paths] webroot     = 服务端 webroot 的路径
 
 2) 双击「一键启动.bat」。
-   看到 "4/4 passed  ALL GREEN" 就成了。
+   看到 "ALL GREEN" 就成了。
    这个窗口别关，最小化放着。
 
 3) 把 client 里两样东西发给玩家：
@@ -24,7 +35,7 @@
 
 ----------------------------------------------------------------
 改了端口也不用重发 jar：
-   config.ini 里的 remote_port 一改，玩家地址和客户端地址都会跟着变，
+   config.ini 里的公网端口一改，玩家地址和客户端地址都会跟着变，
    跑一次启动器会把新的 client/qingming-updater.txt 生成好。
 ----------------------------------------------------------------
 停止服务：Ctrl+C  或双击「停止.bat」

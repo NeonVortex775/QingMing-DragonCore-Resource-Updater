@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-青冥·仙域 开服链路自检（纯 ASCII 输出，避免任何控制台编码问题）
+青冥 开服链路自检（纯 ASCII 输出，避免任何控制台编码问题）
 
-检查三件事：
-  1. 本地资源服务  127.0.0.1:8080/dc/version.txt
-  2. 本地分流器    127.0.0.1:25566 的 MC 状态查询是否与直连 25565 一致
-  3. 公网链路      free.frp.vip:11491 同时能出资源(HTTP)和出 MC(status)
+  1. 本地资源服务  127.0.0.1:<http_port>/dc/version.txt
+  2. 本机 MC       relay 模式对比「分流器 vs 直连」，direct 模式只确认 MC 有响应
+  3. 公网资源      <公网地址>:<端口>/dc/version.txt
+  4. 公网 MC       relay 走共用端口；direct 走 MC 自己的端口
 
-用法：python dc_verify.py [--public-host free.frp.vip] [--public-port 11491]
+用法：python dc_verify.py [--public-host <域名或IP>] [--public-port <端口>]
 """
 
 import json
@@ -25,7 +25,10 @@ _CFG = _load_cfg()
 LOCAL_HTTP = ("127.0.0.1", _CFG.http_port)
 LOCAL_MC = ("127.0.0.1", _CFG.mc_port)
 LOCAL_MUX = ("127.0.0.1", _CFG.mux_port)
-PUBLIC = (_CFG.server_addr, _CFG.remote_port)
+PUBLIC = (_CFG.host, _CFG.public_http_port)   # 公网资源地址
+PUBLIC_MC = (_CFG.host, _CFG.mc_port)         # 公网 MC 地址（direct 模式用）
+DIRECT = _CFG.is_direct
+CHECK_MC_PUBLIC = True
 
 
 def _varint(n):
@@ -108,7 +111,7 @@ def mc_status(host, port, timeout=10):
 
 
 def _retry(fn, times=4, delay=3.0):
-    """frpc 刚启动时隧道可能还没建好，公网检查给几次机会"""
+    """中转客户端刚启动时隧道可能还没建好，公网检查给几次机会"""
     last = None
     for i in range(times):
         try:
@@ -130,6 +133,7 @@ def summarize(status):
 
 def main():
     host, port = PUBLIC
+    join_addr = "%s:%d" % (PUBLIC_MC if DIRECT else PUBLIC)   # 玩家进服地址
     for i, a in enumerate(sys.argv):
         if a == "--public-host" and i + 1 < len(sys.argv):
             host = sys.argv[i + 1]
@@ -150,16 +154,22 @@ def main():
     except Exception as e:
         rows.append(("local http %d" % LOCAL_HTTP[1], False, "%s: %s" % (type(e).__name__, e)))
 
-    # ---- 2. 分流器 MC 通道 vs 直连 ----
+    # ---- 2. 本机 MC（relay 模式同时对比分流器通道）----
     t0 = time.time()
     try:
         direct = mc_status(*LOCAL_MC, timeout=8)
-        muxed = mc_status(*LOCAL_MUX, timeout=8)
-        ok = bool(direct) and bool(muxed) and direct == muxed
-        rows.append(("local mux %d mc" % LOCAL_MUX[1], ok, "%s  %.2fs"
-                     % (summarize(muxed), time.time() - t0)))
+        if DIRECT:
+            ok = bool(direct)
+            rows.append(("local mc %d" % LOCAL_MC[1], ok, "%s  %.2fs"
+                         % (summarize(direct), time.time() - t0)))
+        else:
+            muxed = mc_status(*LOCAL_MUX, timeout=8)
+            ok = bool(direct) and bool(muxed) and direct == muxed
+            rows.append(("local mux %d mc" % LOCAL_MUX[1], ok, "%s  %.2fs"
+                         % (summarize(muxed), time.time() - t0)))
     except Exception as e:
-        rows.append(("local mux %d mc" % LOCAL_MUX[1], False, "%s: %s" % (type(e).__name__, e)))
+        label = "local mc %d" % LOCAL_MC[1] if DIRECT else "local mux %d mc" % LOCAL_MUX[1]
+        rows.append((label, False, "%s: %s" % (type(e).__name__, e)))
 
     # ---- 3. 公网：资源 ----
     t0 = time.time()
@@ -174,12 +184,14 @@ def main():
 
     # ---- 4. 公网：MC 状态 ----
     t0 = time.time()
+    mc_host, mc_port = (PUBLIC_MC if DIRECT else PUBLIC)
     try:
-        st = _retry(lambda: mc_status(host, port, timeout=10), times=3, delay=2.0)
-        rows.append(("public mc %s:%d" % (host, port), bool(st),
-                     "%s  %.2fs" % (summarize(st), time.time() - t0)))
+        if CHECK_MC_PUBLIC:
+            st = _retry(lambda: mc_status(mc_host, mc_port, timeout=10), times=3, delay=2.0)
+            rows.append(("public mc %s:%d" % (mc_host, mc_port), bool(st),
+                         "%s  %.2fs" % (summarize(st), time.time() - t0)))
     except Exception as e:
-        rows.append(("public mc %s:%d" % (host, port), False,
+        rows.append(("public mc %s:%d" % (mc_host, mc_port), False,
                      "%s: %s" % (type(e).__name__, e)))
 
     print("")
@@ -192,7 +204,7 @@ def main():
     good = sum(1 for r in rows if r[1])
     print("  %d/%d passed   total %.2fs" % (good, len(rows), time.time() - t_all))
     if good == len(rows):
-        print("  ALL GREEN - players can join %s:%d" % (host, port))
+        print("  ALL GREEN - players can join %s" % join_addr)
     else:
         print("  Something is down. Check the 3 minimized windows.")
         for name, ok, detail in rows:

@@ -1,4 +1,4 @@
-# 青冥 · 仙域　客户端资源自动更新
+# 青冥　客户端资源自动更新
 
 > Forge 1.12.2 + DragonCore 的客户端资源**增量**更新方案。
 > 服务端换了贴图，玩家下次启动游戏自动下载变化的那几个文件 ——
@@ -17,17 +17,23 @@
 | 服务器地址 | 可能被迫更换 | 完全不变 |
 | 带宽成本 | 峰值巨大 | 只有增量 |
 
-## 原理
+## 两种部署方式
 
-核心难点：**服务器云机往往只给一个公网端口，而 MC 已经占掉了它**，资源分发还需要一个 HTTP 端口。
+| | `mode = direct` | `mode = relay` |
+|---|---|---|
+| 适用 | **VPS / 云服务器**（有公网 IP） | **家里电脑**（无公网 IP） |
+| 需要穿透工具 | 不需要 | 需要（如 frp，自备） |
+| 需要分流器 | 不需要 | 需要（内置，自动跑） |
+| 端口 | MC、资源各一个（防火墙放行） | MC 与资源**共用一个公网端口** |
 
-解法是在这一个端口上做「首包分流」：
+`direct` 模式下 MC 服务器自己对外、资源走 `http_port`，最简单；
+`relay` 模式下靠「首包分流」让一个端口同时干两件事：
 
 ```
- 玩家客户端                                你的电脑（开服机）
+ 玩家客户端                                 开服机
 ┌────────────────────┐                   ┌──────────────────────────────────┐
-│ DragonCore         │  MC 协议          │ frpc.exe                         │
-│  + QingMingUpdater │──────────────────►│  你的域名:公网端口 → 本地 25566  │
+│ DragonCore         │  MC 协议          │ 中转客户端（如 frpc，自备）       │
+│  + QingMingUpdater │──────────────────►│  公网地址:端口 → 本地 25566       │
 │                    │                   │     └─ 分流器 (dc_mux.py)        │
 │                    │                   │          ├─ MC 握手 → 25565 服务器│
 │                    │  HTTP /dc/...     │          └─ GET/POST → 8080 资源  │
@@ -39,14 +45,13 @@
 - 首包以 `GET /`、`POST` 这类 HTTP 方法开头 → 转给资源服务
 - 其它（MC 握手的第一个字节是 VarInt 包长） → 转给 MC 服务器
 
-于是玩家地址始终是 `你的域名:公网端口`，资源从同一个端口的 `/dc/` 拉。
-
 **版本号 = 资源清单的 sha1 指纹。** 内容不变 → 版本号不变 → 客户端只发一个 12 字节请求就放行（<1 秒）；
 改了任何一张图 → 版本号变 → 客户端只下载 sha1 不同的文件。
 
 ## 特性
 
-- **单端口复用**：MC 与资源 HTTP 共用 frp 的那一个端口，玩家无感
+- **两种对外方式**：VPS 直连 / 内网穿透，一个 `mode` 字段切换
+- **单端口复用**（relay）：MC 与资源 HTTP 共用一个公网端口，玩家无感
 - **增量下载**：sha1 清单比对，只下变化的文件
 - **6 线程并发**，单文件失败重试 3 次
 - **自愈**：失败的文件会记账，下次启动自动补齐（`__count` 校验，避免“永久缺一点”）
@@ -62,18 +67,20 @@
 - Windows 10/11
 - Python 3.7+（安装时勾选 `Add Python to PATH`）
 - Java 8（玩家端跑 Forge 1.12.2）
-- 一条 frp 隧道或者一个VPS
+- 公网入口二选一：**VPS / 云服务器**（`mode = direct`），或 **frp 等内网穿透**（`mode = relay`，工具自备）
 
 ### 1. 改 `config.ini`
 
-三处必改，其余保持默认：
-
 ```ini
-[frp]
-server_addr = 你的 frp/vps 域名
-server_port = 3010
-user        = 你自己的 frp/vps 用户标识     ; 用别人的会互相抢隧道
-remote_port = 11491                    ; 玩家连的端口
+[network]
+; VPS / 云服务器（有公网 IP）：
+mode        = direct
+public_host = 你的公网 IP 或域名
+
+; 家里电脑（内网穿透）则改为：
+;   mode = relay
+;   public_port = 穿透映射出来的公网端口
+;   [relay] server / port / token = 穿透服务的地址、端口、通道标识
 
 [paths]
 source_pack = C:/Users/你/.minecraft/resourcepacks/DragonCore
@@ -91,8 +98,8 @@ webroot     = C:/服务器/webroot
 
 local http 8080              PASS  200  version=xxxxxxxx  0.05s
 local mux 25566 mc           PASS  Paper 1.12.2  online 0/9999  0.06s
-public http vps/frp域名  PASS  200  version=xxxxxxxx  0.18s
-public mc 域名:公网端口 PASS  Paper 1.12.2  online xx/xxx  0.15s
+public http <公网地址>        PASS  200  version=xxxxxxxx  0.18s
+public mc <公网地址>:端口     PASS  Paper 1.12.2  online 0/9999  0.15s
 4/4 passed   ALL GREEN
 ```
 
@@ -117,12 +124,13 @@ public mc 域名:公网端口 PASS  Paper 1.12.2  online xx/xxx  0.15s
 
 | 想改的 | 改 `config.ini` 的 | 还要动什么 |
 |---|---|---|
-| frp 域名/端口 | `server_addr` / `server_port` | 无 |
-| 公网端口（玩家连的） | `remote_port` | 无，玩家地址自动跟着变 |
-| 本机 MC 端口 | `mc_port` | 无 |
-| 资源服务端口 | `http_port` | 无 |
+| 公网域名或 IP | `network.public_host` | 无 |
+| 公网端口（玩家连的） | `network.public_port` | 无，玩家地址自动跟着变 |
+| 穿透服务 | `relay.server` / `relay.port` / `relay.token` | 无 |
+| 本机 MC 端口 | `server.mc_port` | 无 |
+| 资源服务端口 | `server.http_port` | 无 |
 | 贴图来源 / 发布目录 | `paths.*` | 无 |
-| 公网地址与 frp 不一致（CDN） | `client.base_url` | 重发 `qingming-updater.txt` |
+| 公网地址不一致（CDN） | `client.base_url` | 重发 `qingming-updater.txt` |
 
 客户端地址是三级优先级，**换服不用重新编译 jar**：
 
@@ -140,19 +148,20 @@ jar 内编译期默认值                            ← 兜底
 ├── 教程.md                  完整教程（13 节，含排错）
 ├── 快速开始.txt              5 步速查
 ├── server/
-│   ├── launcher.py          启动器：一个进程管 HTTP + 分流器 + frpc
+│   ├── launcher.py          启动器：一个进程管 HTTP + 分流器 + 中转客户端
 │   ├── dc_config.py         读 config.ini
 │   ├── dc_sync_server.py    资源镜像 + 清单 + 静态服务
-│   ├── dc_mux.py            单端口首包分流
-│   └── dc_verify.py         4 项全链路自检
+│   ├── dc_mux.py            单端口首包分流（仅 relay 模式）
+│   └── dc_verify.py         全链路自检
 ├── client/                  发给玩家的东西
+├── relay/                   内网穿透客户端的放置处（工具自备，不随仓库分发）
 ├── src/                     CoreMod 源码（Java 8，不引用任何 MC 类）
 └── build/                   重新编译 / 重新打包
 ```
 
 ## 首次发客户端：别让玩家从公网裸拉
 
-实测免费 vps/frp 节点约 **325 KB/s**，150 MB 的整包要等 7 分钟以上。
+穿透隧道 / 小水管 VPS 的带宽有限，150 MB 的整包可能要等几分钟。
 
 **正确做法**：把 `resourcepacks/DragonCore` 整个目录随客户端一起发。
 更新器发现本地文件大小对得上就直接建索引，**0 下载、1 秒放行**，之后走增量。
@@ -167,7 +176,6 @@ bash build/build.sh
 python build/打包.py
 ```
 
-`frpc.exe` 不在仓库里（第三方二进制），从 <https://github.com/fatedier/frp/releases> 下载 0.35.x 放进 `frp/` 即可。
 或者直接下载 [Releases](https://github.com/NeonVortex775/QingMing-DragonCore-Resource-Updater/releases) 里已经打包好的 zip。
 
 ## 常见问题
@@ -175,9 +183,9 @@ python build/打包.py
 | 现象 | 处理 |
 |---|---|
 | `端口 8080 被占用` | 上次进程没退干净，双击 `停止.bat`；或改 `http_port` |
-| frpc 反复退出 | 看 `server/.run/logs/frpc.log`，多半是 `user` 或 `server_port` 错了 |
-| 公网 FAIL、本地 PASS | 隧道没建起来，检查 frp 三要素和 `remote_port` 是否被占 |
-| 能进服但贴图不更新 | 浏览器开 `.../dc/version.txt`：出版本号 → 问题在客户端；超时 → 隧道 |
+| 中转客户端反复退出 | 看 `server/.run/logs/relay.log`，多半是 `relay.token` 或 `relay.port` 错了 |
+| 公网 FAIL、本地 PASS | 穿透没建起来，检查 `[relay]` 三项和公网端口是否被占；direct 模式检查安全组 |
+| 能进服但贴图不更新 | 浏览器开 `.../dc/version.txt`：出版本号 → 问题在客户端；超时 → 穿透/防火墙 |
 | 客户端没下载 | 删掉客户端 `.dcsync.json` 强制全量校验 |
 
 更详细的排查见 [`教程.md`](教程.md)。
@@ -187,8 +195,8 @@ python build/打包.py
 - 只支持 Windows 服务端（脚本用 bat + Python 标准库，逻辑本身跨平台）
 - 需要 Python 3.7+，未打包成 exe
 - 分流器按首包特征判断，非 HTTP / 非 MC 的 TCP 流量会被当成 MC 转发
-- 免费 frp 节点的带宽是硬瓶颈，大更新建议直接发整包
+- 内网穿透的带宽是硬瓶颈，大更新建议直接发整包
 
 ## 许可
 
-未声明许可证。`frp/` 下的 frpc.exe 属 [fatedier/frp](https://github.com/fatedier/frp)，Apache-2.0。
+未声明许可证。若使用 frp 做内网穿透，其客户端属 [fatedier/frp](https://github.com/fatedier/frp)，Apache-2.0（自备，不随本仓库分发）。

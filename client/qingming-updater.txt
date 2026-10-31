@@ -1,4 +1,4 @@
-# 青冥·仙域 资源更新地址
+# 青冥 资源更新地址
 # 复制本文件到玩家客户端 .minecraft/config/qingming-updater.txt
 # 换服务器只改下面这一行
 http://你的域名:端口/dc/

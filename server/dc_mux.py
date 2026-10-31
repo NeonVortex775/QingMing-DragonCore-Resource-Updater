@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-青冥·仙域 —— 单端口分流器
+青冥 —— 单端口分流器
 
-一个问题：frp 只给了一个公网端口（free.frp.vip:11491），但它已经被 MC 服务器(25565)占了，
-资源分发还需要一个 HTTP 端口。免费 frp 不放行第二个 remote_port。
+一个问题：内网穿透服务通常只给一个公网端口，但它已经被 MC 服务器(25565)占了，
+资源分发还需要一个 HTTP 端口。多数免费穿透不放行第二个端口。
 
 解法：在这一个端口上做「首包分流」。
-    frpc  : local_port = 25566  ->  free.frp.vip:11491
+    中转客户端 : local_port = 25566  ->  公网共用端口
     本程序 : 监听 25566，看客户端发来的第一个数据包是什么
              - 以 HTTP 方法开头 (GET / HEAD / POST / ...)  -> 转发到 8080（资源服务）
              - 其它（MC 握手是 VarInt 包长，不会是 ASCII 方法名）-> 转发到 25565（MC 服务器）
 
-玩家侧完全无感：服务器地址还是 free.frp.vip:11491，不需要改。
-资源更新走 http://free.frp.vip:11491/dc/  ，也在同一个端口。
+玩家侧完全无感：服务器地址不变，不需要改。
+资源更新走 http://<公网地址>:<共用端口>/dc/  ，也在同一个端口。
 
 用法：
     python dc_mux.py            启动（前台，Ctrl+C 停）
@@ -34,7 +34,7 @@ except ImportError:                       # 作为包/模块导入时
 _CFG = _load_cfg()
 
 LISTEN_HOST = "0.0.0.0"
-LISTEN_PORT = _CFG.mux_port              # frpc 的 local_port 指到这里
+LISTEN_PORT = _CFG.mux_port              # 中转客户端的本地端口指到这里
 MC_TARGET = ("127.0.0.1", _CFG.mc_port)      # 真正的 MC 服务器
 WEB_TARGET = ("127.0.0.1", _CFG.http_port)   # 资源 HTTP 服务
 
@@ -167,13 +167,13 @@ def serve():
         srv.bind((LISTEN_HOST, LISTEN_PORT))
     except (OSError, socket.error) as e:
         _log("监听 %s:%d 失败: %s" % (LISTEN_HOST, LISTEN_PORT, e))
-        _log("（是不是已经把 frpc 的 local_port 改成 %d 了，而旧进程还占着？）" % LISTEN_PORT)
+        _log("（是不是中转客户端的本地端口还没指到 %d，而旧进程还占着？）" % LISTEN_PORT)
         return 1
     srv.listen(64)
     _log("分流器已启动  0.0.0.0:%d" % LISTEN_PORT)
     _log("  Minecraft   首包非 HTTP  -> %s:%d" % MC_TARGET)
     _log("  资源 HTTP   首包 GET/POST -> %s:%d" % WEB_TARGET)
-    _log("请把 frpc 的 local_port 改成 %d（remote_port 保持 11491 不变）" % LISTEN_PORT)
+    _log("请把中转客户端的本地端口设为 %d，映射到公网共用端口" % LISTEN_PORT)
 
     def watchdog():
         while not _stop.wait(300):
@@ -278,7 +278,7 @@ def check(host="127.0.0.1", port=LISTEN_PORT):
 
 def main():
     global LISTEN_PORT, MC_TARGET, WEB_TARGET, VERBOSE
-    ap = argparse.ArgumentParser(description="青冥·仙域 单端口分流器（MC + HTTP 共用一个 frp 端口）")
+    ap = argparse.ArgumentParser(description="青冥 单端口分流器（MC + HTTP 共用一个公网端口）")
     ap.add_argument("--check", action="store_true", help="自检两条通道是否能走通")
     ap.add_argument("--say", action="store_true", help="不做事，只打印用法")
     ap.add_argument("--verbose", action="store_true", help="打印每条连接的首包，排查路由问题")

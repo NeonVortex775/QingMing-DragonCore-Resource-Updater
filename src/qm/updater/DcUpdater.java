@@ -52,10 +52,10 @@ public class DcUpdater implements IFMLLoadingPlugin {
      *   1. JVM 参数 -Ddcmc.base=http://x.x.x.x:port/dc/
      *   2. 客户端配置文件 .minecraft/config/qingming-updater.txt（第一行非注释内容）
      *      或 .minecraft/qingming-updater.txt
-     *   3. 下面这个编译期默认值
+     *   3. 下面这个编译期默认值（留空 = 必须带配置文件，没有配置就静默跳过）
      * 所以换服务器不需要重新打包 jar，发给玩家时附带一个 txt 即可。
      */
-    private static final String BASE = "http://free.frp.vip:11491/dc/";
+    private static final String BASE = "";
     /** 客户端配置文件里的地址（可能为 null） */
     private static final String[] BASE_FILES = {
             "config/qingming-updater.txt",
@@ -133,7 +133,7 @@ public class DcUpdater implements IFMLLoadingPlugin {
 
     // ---------- 配置读取 ----------
 
-    /** 地址来源：-Ddcmc.base > 客户端 txt 配置 > 编译期默认 */
+    /** 地址来源：-Ddcmc.base > 客户端 txt 配置 > 编译期默认（可为空） */
     private static String base() {
         String v = System.getProperty("dcmc.base");
         if (v == null || v.trim().isEmpty()) {
@@ -142,7 +142,10 @@ public class DcUpdater implements IFMLLoadingPlugin {
         if (v == null || v.trim().isEmpty()) {
             v = BASE;
         }
-        v = v.trim();
+        v = v == null ? "" : v.trim();
+        if (v.isEmpty()) {
+            return "";
+        }
         return v.endsWith("/") ? v : v + "/";
     }
 
@@ -211,6 +214,10 @@ public class DcUpdater implements IFMLLoadingPlugin {
 
     private void run(File pack, long t0) throws Exception {
         if (!pack.isDirectory() && !pack.mkdirs()) {
+            return;
+        }
+        if (base().isEmpty()) {
+            note(pack, "资源地址未配置（缺 qingming-updater.txt 或 -Ddcmc.base），跳过更新");
             return;
         }
         File stateFile = new File(pack, STATE_NAME);
