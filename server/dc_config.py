@@ -86,7 +86,9 @@ class Cfg(object):
 
     @property
     def web_dir(self):
-        """webroot/dc  —— 实际对外发布的目录"""
+        """webroot/dc  —— 实际对外发布的目录（webroot 没填时返回空串，避免显示成孤零零的 dc）"""
+        if not self.webroot:
+            return ""
         return os.path.join(self.webroot, self.sub)
 
     @property
