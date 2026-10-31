@@ -22,7 +22,7 @@ if not defined PY (
     exit /b 1
 )
 
-if not exist "config.ini" (
+if not exist "config.ini" ( 
     echo.
     echo  [ERROR] config.ini is missing.
     echo  Unzip the whole package first, do not move files around.
