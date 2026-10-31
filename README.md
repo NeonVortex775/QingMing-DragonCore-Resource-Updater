@@ -168,7 +168,7 @@ python build/打包.py
 ```
 
 `frpc.exe` 不在仓库里（第三方二进制），从 <https://github.com/fatedier/frp/releases> 下载 0.35.x 放进 `frp/` 即可。
-或者直接下载 [Releases](../../releases) 里已经打包好的 zip。
+或者直接下载 [Releases](https://github.com/NeonVortex775/QingMing-DragonCore-Resource-Updater/releases) 里已经打包好的 zip。
 
 ## 常见问题
 
