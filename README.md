@@ -62,7 +62,7 @@
 - Windows 10/11
 - Python 3.7+（安装时勾选 `Add Python to PATH`）
 - Java 8（玩家端跑 Forge 1.12.2）
-- 一条 frp 隧道（`free.frp.vip` 免费节点，或自建 frps）
+- 一条 frp 隧道或者一个VPS
 
 ### 1. 改 `config.ini`
 
@@ -70,9 +70,9 @@
 
 ```ini
 [frp]
-server_addr = 你的 frp 域名
+server_addr = 你的 frp/vps 域名
 server_port = 3010
-user        = 你自己的 frp 用户标识     ; 用别人的会互相抢隧道
+user        = 你自己的 frp/vps 用户标识     ; 用别人的会互相抢隧道
 remote_port = 11491                    ; 玩家连的端口
 
 [paths]
@@ -91,8 +91,8 @@ webroot     = C:/服务器/webroot
 
 local http 8080              PASS  200  version=xxxxxxxx  0.05s
 local mux 25566 mc           PASS  Paper 1.12.2  online 0/9999  0.06s
-public http free.frp.vip     PASS  200  version=xxxxxxxx  0.18s
-public mc free.frp.vip:11491 PASS  Paper 1.12.2  online 0/9999  0.15s
+public http vps/frp域名  PASS  200  version=xxxxxxxx  0.18s
+public mc 域名:公网端口 PASS  Paper 1.12.2  online xx/xxx  0.15s
 4/4 passed   ALL GREEN
 ```
 
